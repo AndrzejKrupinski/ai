@@ -15,6 +15,7 @@ import { vectorService } from './services/common/vector.service';
 import { cronService } from './services/common/cron.service';
 import conversation from './routes/conversation';
 import { rateLimit } from './middleware/rate-limit';
+import slack from "./routes/slack";
 
 const app = new Hono();
 
@@ -52,6 +53,7 @@ app.route('/api/agi', agi);
 app.route('/api/conversation', conversation);
 app.route('/api/files', files);
 app.route('/api/tools', tools);
+app.route('/api/slack', slack);
 
 app.get('/', c => c.text('AGI is here.'));
 

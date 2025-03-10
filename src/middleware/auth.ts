@@ -6,10 +6,11 @@ import {providers} from '../config/llm.config';
 export const authMiddleware = () => {
   return async (c: Context, next: Next) => {
     if (
-      c.req.path.match(/^\/api\/auth\/google(?:\/.*)?$/) ||
-      c.req.path.match(/^\/(api\/auth|api\/files|api\/file)\/[0-9a-f-]+$/i) ||
-      c.req.path.match(/^\/api\/auth\/spotify\/(?:callback|authorize)/)
-    ) {
+      c.req.path.match(/^\/api\/auth\/google(?:\/.*)?$/)
+      || c.req.path.match(/^\/(api\/auth|api\/files|api\/file)\/[0-9a-f-]+$/i)
+      || c.req.path.match(/^\/api\/auth\/spotify\/(?:callback|authorize)/)
+      || c.req.path.match(/^\/api\/slack/)
+  ) {
       return next();
     }
 
