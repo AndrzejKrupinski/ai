@@ -1,0 +1,224 @@
+version: '3.9'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8081:8081"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: mysql://root:password@mysql:3306/alice_agi
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      - qdrant
+      - langfuse-web
+      - langfuse-worker
+    restart: unless-stopped
+
+    # TODO: DOUBLE-CHECK THAT FAIL:
+    #app-1         | Proceeding with setup...
+    #app-1         | 📦 Generating database schema...
+    #app-1         | $ drizzle-kit generate
+    #app-1         | No config path provided, using default 'drizzle.config.ts'
+    #app-1         | Reading config file '/app/drizzle.config.ts'
+    #app-1         | Api key is used with unsecure connection.
+    #app-1         | 15 tables
+    #app-1         | users 16 columns 3 indexes 0 fks
+    #app-1         | tools 7 columns 1 indexes 0 fks
+    #app-1         | conversations 7 columns 1 indexes 1 fks
+    #app-1         | memories 7 columns 1 indexes 2 fks
+    #app-1         | tasks 12 columns 1 indexes 1 fks
+    #app-1         | actions 12 columns 1 indexes 2 fks
+    #app-1         | messages 9 columns 1 indexes 1 fks
+    #app-1         | documents 8 columns 1 indexes 1 fks
+    #app-1         | message_documents 5 columns 0 indexes 2 fks
+    #app-1         | action_documents 5 columns 0 indexes 2 fks
+    #app-1         | conversation_documents 5 columns 0 indexes 2 fks
+    #app-1         | categories 7 columns 1 indexes 0 fks
+    #app-1         | conversation_memories 5 columns 0 indexes 2 fks
+    #app-1         | task_documents 5 columns 0 indexes 2 fks
+    #app-1         | jobs 13 columns 1 indexes 1 fks
+    #app-1         |
+    #app-1         | No schema changes, nothing to migrate 😴
+    #app-1         | 🌱 Running database migrations...
+    #app-1         | $ bun run src/database/migrate.ts
+    #app-1         | Api key is used with unsecure connection.
+    #app-1         | Migrations complete
+    #app-1         | 🌱 Seeding database...
+    #app-1         | $ bun run src/database/seed.ts
+    #app-1         | Api key is used with unsecure connection.
+    #app-1         | 🌱 Seeding...
+    #app-1         | ❌ Error seeding: 158 |     return this._prepare().get(placeholderValues);
+    #app-1         | 159 |   };
+    #app-1         | 160 |   values = (placeholderValues) => {
+    #app-1         | 161 |     return this._prepare().values(placeholderValues);
+    #app-1         | 162 |   };
+    #app-1         | 163 |   async execute() {
+    #app-1         |                         ^
+    #app-1         | SQLiteError: UNIQUE constraint failed: tools.uuid
+    #app-1         |       errno: 2067,
+    #app-1         |  byteOffset: -1,
+    #app-1         |        code: "SQLITE_CONSTRAINT_UNIQUE"
+    #app-1         |
+    #app-1         |       at #run (bun:sqlite:173:103)
+    #app-1         |       at execute (/app/node_modules/drizzle-orm/sqlite-core/query-builders/insert.js:163:19)
+    #app-1         |       at then (/app/node_modules/drizzle-orm/query-promise.js:21:17)
+    #app-1         |
+    #app-1         | 🚀 Starting Alice AGI...
+    #app-1         | $ bun run --watch src/index.ts
+    #app-1         | Api key is used with unsecure connection.
+    #app-1         | Failed to initialize Linear client. Check LINEAR_API_KEY in .env or remove linear.service.ts from tools.config.ts and ai.service.ts
+    #app-1         | Server is running on http://localhost:8081
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT_ALLOW_ORIGINS: "http://localhost:8081,http://app:3000"
+    restart: unless-stopped
+
+  langfuse-web:
+    image: langfuse/langfuse:3
+    container_name: langfuse-web
+    ports:
+      - "3000:3000"
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/postgres
+
+      # ClickHouse connection (updated port)
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000 # Internal port remains 9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+
+      # Redis connection
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: "" # explicitly empty password
+
+      # S3 configuration (using MinIO with updated console port)
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: eu-central-1
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+
+      # Authentication and encryption
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dupa123!
+      SALT: ${SALT:-changeme}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    container_name: langfuse-worker
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/postgres
+
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: "" # explicitly empty password
+
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: eu-central-1
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+
+      # Authentication and encryption
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dupa123!
+      SALT: ${SALT:-changeme}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+
+  langfuse-postgres:
+    image: postgres:14
+    container_name: langfuse-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - langfuse-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server
+    container_name: langfuse-clickhouse
+    hostname: langfuse-clickhouse
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    ports:
+      - "8123:8123" # HTTP interface
+      - "9001:9000" # Native interface
+    restart: on-failure:5
+
+  redis:
+    image: redis:7-alpine
+    container_name: langfuse-redis
+    hostname: redis
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - langfuse-redis-data:/data
+    restart: on-failure:5
+
+  minio:
+    image: minio/minio
+    container_name: langfuse-minio
+    hostname: minio
+    command: server /data --address ":9000" --console-address ":9002" # Changed console port
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - langfuse-minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9002:9002"
+    restart: on-failure:5
+
+volumes:
+  qdrant_data:
+  langfuse-postgres-data:
+  langfuse-clickhouse-data:
+  langfuse-clickhouse-logs:
+  langfuse-redis-data:
+  langfuse-minio-data:
